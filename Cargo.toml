@@ -1,0 +1,13 @@
+[package]
+name = "batty"
+version = "0.1.0"
+authors = ["Nico Estrada <estradanicolas@gmail.com>"]
+edition = "2021"
+description = "CLI tool to read/set battery charge threshold on ASUS laptops"
+license = "MIT"
+repository = "https://github.com/nicoestrada/batty"
+readme = "README.md"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
