@@ -25,7 +25,6 @@ fn main() {
     });
 
     if let Some(value) = cli.value {
-        // ---- Write mode ----
         if value > 100 {
             eprintln!("Error: value must be between 0 and 100");
             std::process::exit(1);
@@ -38,7 +37,6 @@ fn main() {
 
         println!("Battery charge threshold set to {}%", value);
     } else {
-        // ---- Read mode ----
         match fs::read_to_string(&path) {
             Ok(current) => println!("Current battery threshold: {}%", current.trim()),
             Err(e) => {
