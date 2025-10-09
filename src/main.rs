@@ -7,11 +7,9 @@ use std::{fs, path::PathBuf};
     about = "Set or read battery charge threshold on ASUS laptops"
 )]
 struct Cli {
-    /// Optional custom path to the charge control file
     #[arg(short, long)]
     path: Option<PathBuf>,
 
-    /// Threshold value (0-100). If not provided, the current threshold is printed.
     #[arg(short, long)]
     value: Option<u8>,
 }
@@ -19,7 +17,6 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
 
-    // Use provided path or default to BAT0
     let path = cli.path.unwrap_or_else(|| {
         PathBuf::from("/sys/class/power_supply/BAT0/charge_control_end_threshold")
     });
