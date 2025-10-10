@@ -10,4 +10,5 @@ readme = "README.md"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-
+ratatui = "0.26"
+crossterm = "0.27"
