@@ -14,16 +14,30 @@ cargo install batty
 ```
 ---
 
+After installation, batty is placed in ~/.cargo/bin. To run it directly, ensure ~/.cargo/bin is in your $PATH. Add it to your shell configuration (e.g., ~/.bashrc or ~/.zshrc):
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+Then reload your shell:
+
+```bash
+source ~/.bashrc  # or ~/.zshrc
+``` 
+
 #### If ~/.cargo/bin is in your $PATH, you can just run:
 
 ```bash
 batty
 ```
 
+To run batty, it requires root privileges:
+
 #### Option A - Use CLI
 
 ```bash
-sudo batty --value 80
+sudo ~/.cargo/bin/batty --value 80
 ```
 
 Works immediately. Keep in mind it is not persistent yet.
@@ -33,7 +47,7 @@ Works immediately. Keep in mind it is not persistent yet.
 #### Option B - Use TUI
 
 ```bash
-sudo batty --tui
+sudo ~/.cargo/bin/batty --tui
 ```
 
 This will give you write access in the TUI
