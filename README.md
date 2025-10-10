@@ -14,39 +14,26 @@ cargo install batty
 ```
 ---
 
-#### Option A — Use full path
+#### If ~/.cargo/bin is in your $PATH, you can just run:
 
 ```bash
-sudo ~/.cargo/bin/batty --value 80
+batty
 ```
 
-Works immediately.
+#### Option A - Use CLI
+
+```bash
+sudo batty --value 80
+```
+
+Works immediately. Keep in mind it is not persistent yet.
 
 ---
 
-#### Option B — Pass your user PATH to sudo
+#### Option B - Use TUI
 
 ```bash
-sudo env "PATH=$PATH" batty --value 80
-```
-
-`env "PATH=$PATH"` temporarily tells `sudo` to use your user’s PATH.
-
----
-
-#### Option C — Install system-wide
-
-```bash
-sudo cp ~/.cargo/bin/batty /usr/local/bin/
-sudo chmod +x /usr/local/bin/batty
-```
-
-Now `sudo batty --value 80` works without specifying the full path.
-
-#### Option D -- Use the TUI
-
-```bash
-sudo ~/.cargo/bin/batty --tui
+sudo batty --tui
 ```
 
 This will give you write access in the TUI
