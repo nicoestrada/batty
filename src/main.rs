@@ -12,8 +12,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::{
-    fs, io,
-    io::ErrorKind,
+    fmt, fs, io,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -30,6 +29,14 @@ struct Cli {
     #[arg(short, long)]
     value: Option<u8>,
 
+    #[arg(
+        short = 'k',
+        long,
+        default_value = "end",
+        help = "Which threshold kind to set (start or end)"
+    )]
+    kind: String,
+
     #[arg(long, help = "Launch the interactive terminal UI")]
     tui: bool,
 }
@@ -37,9 +44,9 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
 
-    let path = cli.path.unwrap_or_else(|| {
-        PathBuf::from("/sys/class/power_supply/BAT0/charge_control_end_threshold")
-    });
+    let bat0_path = cli
+        .path
+        .unwrap_or_else(|| PathBuf::from("/sys/class/power_supply/BAT0"));
 
     if cli.tui {
         if cli.value.is_some() {
@@ -47,7 +54,7 @@ fn main() {
             std::process::exit(1);
         }
 
-        if let Err(err) = run_tui(path) {
+        if let Err(err) = run_tui(bat0_path) {
             eprintln!("Failed to run TUI: {}", err);
             std::process::exit(1);
         }
@@ -56,22 +63,43 @@ fn main() {
     }
 
     if let Some(value) = cli.value {
-        if value > 100 {
-            eprintln!("Error: value must be between 0 and 100");
-            std::process::exit(1);
-        }
+        let kind = match cli.kind.to_lowercase().as_str() {
+            "start" => ThresholdKind::Start,
+            "end" => ThresholdKind::End,
+            _ => {
+                eprintln!("Error: kind must be either 'start' or 'end'");
+                std::process::exit(1);
+            }
+        };
 
-        if let Err(e) = write_threshold(&path, value) {
-            eprintln!("Failed to write to {:?}: {}", path, e);
-            std::process::exit(1);
-        }
-
-        println!("Battery charge threshold set to {}%", value);
-    } else {
-        match read_threshold(&path) {
-            Ok(current) => println!("Current battery threshold: {}%", current),
+        let mut thresholds = match Thresholds::load(&bat0_path) {
+            Ok(t) => t,
             Err(e) => {
-                eprintln!("Failed to read from {:?}: {}", path, e);
+                eprintln!("Failed to load current thresholds: {}", e);
+                std::process::exit(1);
+            }
+        };
+
+        if let Err(e) = thresholds.set(kind, value) {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+
+        if let Err(e) = thresholds.save(&bat0_path) {
+            eprintln!("Failed to save thresholds: {}", e);
+            std::process::exit(1);
+        }
+
+        println!("Battery charge {} threshold set to {}%", kind, value);
+    } else {
+        match Thresholds::load(&bat0_path) {
+            Ok(thresholds) => {
+                println!("Current battery thresholds:");
+                println!("  Start: {}%", thresholds.start);
+                println!("  End:   {}%", thresholds.end);
+            }
+            Err(e) => {
+                eprintln!("Failed to read thresholds: {}", e);
                 std::process::exit(1);
             }
         }
@@ -110,72 +138,169 @@ fn run_app(terminal: &mut BattyTerminal, path: PathBuf) -> io::Result<()> {
         terminal.draw(|frame| draw_ui(frame, &app))?;
 
         if event::poll(Duration::from_millis(250))? {
-            match event::read()? {
-                Event::Key(key) => match key.code {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                     KeyCode::Up | KeyCode::Char('+') => app.increment(),
                     KeyCode::Down | KeyCode::Char('-') => app.decrement(),
                     KeyCode::Enter => app.save(),
+                    KeyCode::Char('j') | KeyCode::Char('k') => app.select_next_threshold_kind(),
                     _ => {}
-                },
-                _ => {}
+                }
             }
         }
     }
 }
 
 struct App {
-    path: PathBuf,
-    value: u8,
+    base_path: PathBuf,
+    curr_threshold_kind: ThresholdKind,
+    thresholds: Thresholds,
     status: Option<String>,
     error: Option<String>,
 }
 
-impl App {
-    fn new(path: PathBuf) -> Self {
-        let mut app = Self {
-            path,
-            value: 50,
-            status: None,
-            error: None,
-        };
+#[derive(PartialEq, Clone, Copy)]
+enum ThresholdKind {
+    Start,
+    End,
+}
 
-        match read_threshold(&app.path) {
-            Ok(value) => app.value = value,
-            Err(err) => {
-                app.error = Some(format_read_error(&app.path, &err));
+impl fmt::Display for ThresholdKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ThresholdKind::Start => write!(f, "start"),
+            ThresholdKind::End => write!(f, "end"),
+        }
+    }
+}
+
+struct Thresholds {
+    start: u8,
+    end: u8,
+}
+
+impl Thresholds {
+    fn load(base_path: &Path) -> io::Result<Self> {
+        let start_path = get_path_for_kind(base_path, &ThresholdKind::Start);
+        let end_path = get_path_for_kind(base_path, &ThresholdKind::End);
+
+        let start = read_threshold(&start_path)?;
+        let end = read_threshold(&end_path)?;
+
+        Ok(Self { start, end })
+    }
+
+    fn save(&self, base_path: &Path) -> io::Result<()> {
+        let start_path = get_path_for_kind(base_path, &ThresholdKind::Start);
+        let end_path = get_path_for_kind(base_path, &ThresholdKind::End);
+
+        write_threshold(&start_path, self.start)?;
+        write_threshold(&end_path, self.end)?;
+
+        Ok(())
+    }
+
+    fn get(&self, kind: ThresholdKind) -> u8 {
+        match kind {
+            ThresholdKind::Start => self.start,
+            ThresholdKind::End => self.end,
+        }
+    }
+
+    fn set(&mut self, kind: ThresholdKind, value: u8) -> Result<(), String> {
+        if value > 100 {
+            return Err("threshold must be between 0 and 100".to_string());
+        }
+
+        match kind {
+            ThresholdKind::Start => {
+                if value >= self.end {
+                    return Err("start threshold must be less than end threshold".to_string());
+                }
+                self.start = value;
+            }
+            ThresholdKind::End => {
+                if value <= self.start {
+                    return Err("end threshold must be greater than start threshold".to_string());
+                }
+                self.end = value;
             }
         }
 
-        app
+        Ok(())
+    }
+}
+
+impl Default for Thresholds {
+    fn default() -> Self {
+        Self { start: 40, end: 80 }
+    }
+}
+
+impl App {
+    fn new(path: PathBuf) -> Self {
+        let thresholds = Thresholds::load(&path).unwrap_or_default();
+
+        Self {
+            curr_threshold_kind: ThresholdKind::Start,
+            base_path: path,
+            thresholds,
+            status: None,
+            error: None,
+        }
     }
 
     fn increment(&mut self) {
-        if self.value < 100 {
-            self.value += 1;
-        }
-        self.status = None;
-        self.error = None;
-    }
+        let current = self.thresholds.get(self.curr_threshold_kind);
+        let new_val = if current < 100 { current + 1 } else { current };
 
-    fn decrement(&mut self) {
-        if self.value > 0 {
-            self.value -= 1;
-        }
-        self.status = None;
-        self.error = None;
-    }
-
-    fn save(&mut self) {
-        match write_threshold(&self.path, self.value) {
+        match self.thresholds.set(self.curr_threshold_kind, new_val) {
             Ok(_) => {
-                self.status = Some(format!("Battery threshold set to {}%", self.value));
+                self.status = None;
                 self.error = None;
             }
             Err(err) => {
-                self.error = Some(format_write_error(&self.path, &err));
+                self.error = Some(err);
+            }
+        }
+    }
+
+    fn decrement(&mut self) {
+        let current = self.thresholds.get(self.curr_threshold_kind);
+        let new_val = current.saturating_sub(1);
+
+        match self.thresholds.set(self.curr_threshold_kind, new_val) {
+            Ok(_) => {
+                self.status = None;
+                self.error = None;
+            }
+            Err(err) => {
+                self.error = Some(err);
+            }
+        }
+    }
+
+    fn save(&mut self) {
+        match self.thresholds.save(&self.base_path) {
+            Ok(_) => {
+                self.status = Some(format!(
+                    "Battery thresholds set to {}%-{}%",
+                    self.thresholds.start, self.thresholds.end
+                ));
+                self.error = None;
+            }
+            Err(err) => {
+                self.error = Some(format!("Failed to save thresholds: {}", err));
                 self.status = None;
             }
+        }
+    }
+
+    fn select_next_threshold_kind(&mut self) {
+        match self.curr_threshold_kind {
+            ThresholdKind::Start => self.curr_threshold_kind = ThresholdKind::End,
+            ThresholdKind::End => self.curr_threshold_kind = ThresholdKind::Start,
         }
     }
 }
@@ -183,11 +308,27 @@ impl App {
 fn draw_ui(frame: &mut Frame<'_>, app: &App) {
     let area = frame.size();
 
+    let start_path = get_path_for_kind(&app.base_path, &ThresholdKind::Start);
+    let end_path = get_path_for_kind(&app.base_path, &ThresholdKind::End);
+
+    let start_selected = app.curr_threshold_kind == ThresholdKind::Start;
+
     let mut lines = vec![
-        Line::from(format!("Path: {}", app.path.display())),
-        Line::from(format!("Target threshold: {}%", app.value)),
+        Line::from(format!("Path: {}", start_path.display())),
+        Line::from(format_selected(
+            start_selected,
+            &format!("Start threshold: {}%", app.thresholds.start),
+        )),
         Line::from(""),
-        Line::from("Use ↑/↓ or +/- to adjust. Press enter to save. Press q to quit."),
+        Line::from(format!("Path: {}", end_path.display())),
+        Line::from(format_selected(
+            !start_selected,
+            &format!("End threshold: {}%", app.thresholds.end),
+        )),
+        Line::from(""),
+        Line::from("• ↑/↓ or +/- : adjust thresholds. "),
+        Line::from("• j/k: select threshold"),
+        Line::from("• Enter: save"),
         Line::from("If saving fails, rerun with sudo or adjust udev permissions."),
     ];
 
@@ -207,28 +348,6 @@ fn draw_ui(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(widget, area);
 }
 
-fn format_read_error(path: &Path, err: &io::Error) -> String {
-    if err.kind() == ErrorKind::PermissionDenied {
-        format!(
-            "Permission denied reading {:?}. Try `sudo batty --tui` or adjust udev rules.",
-            path
-        )
-    } else {
-        format!("Failed to read from {:?}: {}", path, err)
-    }
-}
-
-fn format_write_error(path: &Path, err: &io::Error) -> String {
-    if err.kind() == ErrorKind::PermissionDenied {
-        format!(
-            "Permission denied writing to {:?}. Try `sudo batty --tui` or adjust udev rules.",
-            path
-        )
-    } else {
-        format!("Failed to write to {:?}: {}", path, err)
-    }
-}
-
 fn read_threshold(path: &Path) -> io::Result<u8> {
     let current = fs::read_to_string(path)?;
     let trimmed = current.trim();
@@ -242,4 +361,19 @@ fn read_threshold(path: &Path) -> io::Result<u8> {
 
 fn write_threshold(path: &Path, value: u8) -> io::Result<()> {
     fs::write(path, value.to_string())
+}
+
+fn get_path_for_kind(base_path: &Path, kind: &ThresholdKind) -> PathBuf {
+    match kind {
+        ThresholdKind::Start => base_path.join("charge_control_start_threshold"),
+        ThresholdKind::End => base_path.join("charge_control_end_threshold"),
+    }
+}
+
+fn format_selected(selected: bool, text: &str) -> String {
+    if selected {
+        format!("‣ {}", text)
+    } else {
+        format!("  {}", text)
+    }
 }
