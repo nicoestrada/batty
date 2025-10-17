@@ -7,5 +7,5 @@
 - Updated CLI to accept --kind (start/end) argument.
 ## [0.2.0] - 2025-10-10
 - Initial TUI release.
-## [0.1.0] - <Previous Date>
+## [0.1.0] - 2025-09-26
 - Initial release.
