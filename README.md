@@ -36,8 +36,28 @@ To run batty, it requires root privileges:
 
 #### Option A - Use CLI
 
+View current battery charge thresholds:
+
+```bash
+sudo ~/.cargo/bin/batty
+```
+
+Set the end threshold (default kind):
+
 ```bash
 sudo ~/.cargo/bin/batty --value 80
+```
+
+Set the start threshold:
+
+```bash
+sudo ~/.cargo/bin/batty --value 40 --kind start
+```
+
+Or use the short flags:
+
+```bash
+sudo ~/.cargo/bin/batty -v 40 -k start
 ```
 
 Works immediately. Keep in mind it is not persistent yet.
@@ -50,4 +70,10 @@ Works immediately. Keep in mind it is not persistent yet.
 sudo ~/.cargo/bin/batty --tui
 ```
 
-This will give you write access in the TUI
+This will give you write access in the TUI.
+
+Controls:
+- Use ↑/↓ or +/- to adjust thresholds
+- Use j/k to switch between start and end threshold
+- Press Enter to save both thresholds
+- Press q to quit
