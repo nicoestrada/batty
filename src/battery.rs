@@ -93,10 +93,12 @@ impl Battery {
             })?;
 
         let status = read_str_battery_attribute(path, BatteryAttribute::Status)
-            .map(|status_str| match status_str.as_str() {
-                "Charging" => BatteryStatus::Charging,
-                _ => BatteryStatus::NotCharging,
-            })
+            .map(
+                |status_str| match status_str.trim().to_lowercase().as_str() {
+                    "charging" => BatteryStatus::Charging,
+                    _ => BatteryStatus::NotCharging,
+                },
+            )
             .unwrap_or_else(|e| {
                 warnings.push(format!(
                     "Failed to read status for {}: {}. Using 'unknown'.",
