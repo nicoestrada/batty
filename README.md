@@ -1,4 +1,4 @@
-# Batty - Battery Health Tool for Linux
+# Batty - Battery Health TUI for Linux
 
 ### What this is for
 - Batty is meant to be installed and used in tandem with [power-profiles-daemon](https://gitlab.freedesktop.org/upower/power-profiles-daemon)
