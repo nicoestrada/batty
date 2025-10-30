@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.1] - 2025-10-30
+### Changed
+-  Fixed error on writing to start threshold if path not available
+
 ## [0.4.0] - 2025-10-22
 ### Added
 - Added battery statistics display in TUI header

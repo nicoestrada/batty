@@ -30,7 +30,11 @@ impl Thresholds {
         let start_path = get_path_for_kind(base_path, &ThresholdKind::Start);
         let end_path = get_path_for_kind(base_path, &ThresholdKind::End);
 
-        let start = read_threshold(&start_path)?;
+        let start = match read_threshold(&start_path) {
+            Ok(value) => value,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => 0,
+            Err(err) => return Err(err),
+        };
         let end = read_threshold(&end_path)?;
 
         Ok(Self { start, end })
@@ -40,7 +44,9 @@ impl Thresholds {
         let start_path = get_path_for_kind(base_path, &ThresholdKind::Start);
         let end_path = get_path_for_kind(base_path, &ThresholdKind::End);
 
-        write_threshold(&start_path, self.start)?;
+        if start_path.exists() {
+            write_threshold(&start_path, self.start)?;
+        }
         write_threshold(&end_path, self.end)?;
 
         Ok(())
