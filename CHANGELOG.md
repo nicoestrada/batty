@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+### Fixed
+- Added support for charge-based ACPI battery attributes (charge_now, charge_full)
+- Fixed batty failing on systems that expose charge-based instead of energy-based attributes
+- Battery reader now automatically detects and uses either energy (µWh) or charge (µAh) attributes
+
 ## [0.4.2] - 2025-11-06
 ### Added
 - Added battery health percentage display in TUI header

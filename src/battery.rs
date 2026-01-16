@@ -1,3 +1,18 @@
+//! Battery information reader for Linux ACPI/sysfs.
+//!
+//! Supports both energy-based (µWh) and charge-based (µAh) battery attributes.
+//! The kernel exposes one or the other depending on the battery firmware's
+//! power_unit setting. This module automatically detects and uses whichever
+//! is available.
+//!
+//! Energy-based attributes (preferred):
+//! - energy_now, energy_full, energy_full_design
+//!
+//! Charge-based attributes (fallback):
+//! - charge_now, charge_full, charge_full_design
+//!
+//! Percentage calculations work with either unit since they're ratios.
+
 use std::{
     fmt, fs, io,
     path::{Path, PathBuf},
@@ -30,13 +45,15 @@ pub enum BatteryAttribute {
 }
 
 impl BatteryAttribute {
-    fn file_name(&self) -> &'static str {
+    /// Returns possible file names for this attribute, in order of preference.
+    /// First is energy-based (µWh), second is charge-based (µAh) where applicable.
+    fn file_names(&self) -> &[&'static str] {
         match self {
-            Self::CurrPower => "energy_now",
-            Self::TotalPower => "energy_full",
-            Self::Status => "status",
-            Self::Cycles => "cycle_count",
-            Self::DesignPower => "energy_full_design",
+            Self::CurrPower => &["energy_now", "charge_now"],
+            Self::TotalPower => &["energy_full", "charge_full"],
+            Self::DesignPower => &["energy_full_design", "charge_full_design"],
+            Self::Status => &["status"],
+            Self::Cycles => &["cycle_count"],
         }
     }
 }
@@ -188,11 +205,40 @@ where
 }
 
 fn read_str_battery_attribute(bat_path: &Path, attr: BatteryAttribute) -> io::Result<String> {
-    let path = bat_path.join(attr.file_name());
-    fs::read_to_string(&path).map_err(|e| {
-        io::Error::new(
+    let file_names = attr.file_names();
+    let mut last_error = None;
+
+    // Try each possible file name in order
+    for file_name in file_names {
+        let path = bat_path.join(file_name);
+        match fs::read_to_string(&path) {
+            Ok(content) => return Ok(content),
+            Err(e) => {
+                last_error = Some((path, e));
+            }
+        }
+    }
+
+    // If we tried multiple files, provide helpful error
+    if file_names.len() > 1 {
+        let tried_names: Vec<&str> = file_names.to_vec();
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "Failed to read {} (tried: {})",
+                attr,
+                tried_names.join(", ")
+            ),
+        ))
+    } else if let Some((path, e)) = last_error {
+        Err(io::Error::new(
             e.kind(),
             format!("Failed to read {}: {}", path.display(), e),
-        )
-    })
+        ))
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("No file names configured for {}", attr),
+        ))
+    }
 }
